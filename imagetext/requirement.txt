@@ -1,0 +1,8 @@
+pandas
+numpy
+easyocr
+matplot
+ipykernel
+pytesseract 
+pdf2image 
+Pillow
