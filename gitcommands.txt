@@ -24,3 +24,9 @@ rmdir /s /q .git
 conda create -p venv python=3.9 -y
 pip install -r requirements.txt
 conda activate venv\
+
+directory creation
+mkdir folder_name
+file creation 
+echo. > file_name.txt
+copy con filename.txt
