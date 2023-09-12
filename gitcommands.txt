@@ -26,7 +26,10 @@ pip install -r requirements.txt
 conda activate venv\
 
 directory creation
+------------------
 mkdir folder_name
-file creation 
+file creation
+-------------- 
 echo. > file_name.txt
 copy con filename.txt
+copy NUL opencv_lsd_v01.ipynb
