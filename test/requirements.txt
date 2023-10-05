@@ -1,0 +1,4 @@
+opencv-python
+bpy # blender library
+pandas
+numpy
