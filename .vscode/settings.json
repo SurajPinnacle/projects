@@ -1,4 +1,5 @@
 {
     "editor.inlineSuggest.enabled": true,
-    "editor.inlineSuggest.suppressSuggestions": true
+    "editor.inlineSuggest.suppressSuggestions": true,
+    "git.ignoreLimitWarning": true
 }
