@@ -33,3 +33,8 @@ file creation
 echo. > file_name.txt
 copy con filename.txt
 copy NUL opencv_lsd_v01.ipynb
+
+-----
+to create requirements.txt
+----------
+conda list --> requirements.txt
