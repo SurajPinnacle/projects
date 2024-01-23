@@ -1,0 +1,98 @@
+WITH 
+project_invoice_tbl AS(
+    select pb.ProjectID
+    , pb.project_breakupid
+    , InvoiceNo
+    , InvoiceAmt as InvAmtBPMS
+    , invoiceamt_usd as InvAmtBPMSUSD
+    , inv1.Currency
+    , CAST((CONCAT(CAST(years as varchar), '-', CAST((CASE WHEN months = 0 THEN 1 ELSE months END) as varchar), '-', '01')) AS date) AS inv_date
+    , invoicedescription
+    , approvestatus
+    , approvedby
+    , approvedate
+    , remarks
+    , rejected
+    , rejectremark
+    from "bpmsv2_dbo_tbl_pdh_achievedrevenue_accounts" inv1
+    left outer join "bpmsv2_dbo_project_breakup"  pb on  inv1.ProjBrkupId=pb.Project_BreakupID
+),
+quickbook_outstandinginvoice AS (
+    SELECT 
+            invoiceno
+            , currency
+            , InvAmtQuickbook
+            , balance
+            , CASE 
+                WHEN ispaid = True AND balance = 0 THEN InvAmtQuickbook 
+                ELSE InvAmtQuickbook - balance
+                END AS amnt_received
+            , CASE 
+                WHEN ispaid = False THEN balance END AS amnt_pending
+            , emailsentstatus
+            , ispaid
+            , CASE
+                WHEN REGEXP_LIKE(duedate, '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+                THEN CAST(duedate as date) -- Already in YYYY-MM-DD format
+                ELSE CAST(date_parse(duedate, '%d-%b-%Y') AS DATE) -- Parse and cast to date
+                END AS duedate
+            , CASE
+                WHEN REGEXP_LIKE(txndate, '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+                THEN CAST(txndate as date) -- Already in YYYY-MM-DD format
+                ELSE CAST(date_parse(txndate, '%d-%b-%Y') AS DATE) -- Parse and cast to date
+                END AS txndate
+            , lastsynctime
+    FROM bpmsv2_dbo_tbl_quickbook_outstandinginvoice
+),
+invoice_tbl AS (
+    SELECT 
+        pi.*
+        , eu.fullname AS approved_by
+        , quickbook.InvAmtQuickbook
+        , quickbook.balance 
+        , quickbook.amnt_received
+        , quickbook.amnt_pending
+        , ROUND((SUM(quickbook.amnt_received) OVER (partition BY pi.projectid)), 2) AS proj_amnt_received
+        , ROUND((SUM(quickbook.amnt_pending) OVER (partition BY pi.projectid)), 2) AS proj_amnt_pending
+        , quickbook.currency as quickbook_currency
+        , quickbook.ispaid
+        , date_diff('day', cast(quickbook.duedate as date), current_date) AS overdue_days
+        , CAST(quickbook.txndate AS DATE) AS txndate
+        , CAST(quickbook.duedate AS DATE) AS duedate
+        , quickbook.emailsentstatus
+        , CASE 
+            WHEN (date_diff('day', quickbook.duedate, current_date)) > 30 AND ispaid = False THEN 'Highly Overdue'
+            WHEN (date_diff('day', quickbook.duedate, current_date)) BETWEEN 0 AND 30 AND ispaid = False THEN 'Recently Overdue'
+            ELSE 'On Time'
+        END AS overdue_category
+        , CAST (lastsynctime AS date) AS sync_date
+    FROM 
+        project_invoice_tbl pi
+    LEFT JOIN 
+        quickbook_outstandinginvoice quickbook 
+    ON 
+        pi.invoiceno = quickbook.invoiceno --AND pi.invoiceno IS NOT NULL
+    LEFT JOIN bpmsv2_dbo_employee_userdetails eu 
+    ON pi.approvedby = eu.empid
+),
+Overdue_cat_group AS (
+    SELECT a.*,
+        array_join(array_agg(a.overdue_category) OVER (PARTITION BY a.projectid), ',') AS proj_overdue_category_grp
+    FROM invoice_tbl a
+    --WHERE projectid = 77793
+),
+overdue_cat_tbl AS (
+    SELECT t.*, 
+    CASE 
+        WHEN position('Highly Overdue' IN t.proj_overdue_category_grp) > 0 THEN 'Highly Overdue'
+        WHEN position('Recently Overdue' IN t.proj_overdue_category_grp) > 0 THEN 'Recently Overdue'
+        ELSE 'On Time' 
+    END AS proj_overdue_category
+    FROM Overdue_cat_group AS t 
+)
+
+select eu.fullname AS PDH, a.* from overdue_cat_tbl a
+left join bpmsv2_dbo_project_breakup pb ON a.projectid = pb.projectid
+left join bpmsv2_dbo_employee_userdetails eu ON pb.empid = eu.empid
+where a.projectid = 77793
+order by inv_date desc

@@ -1,0 +1,110 @@
+WITH
+estimated_hours AS(
+    select projectid, count(projectid) as proj_brkp_counts, sum(brkp_hours) as hours, proj_status 
+    from view_proj_brkp_data 
+    group by projectid, proj_status
+),
+inv_data AS(
+    select 
+        projectid, project_breakupid, InvoiceNo, inv_date, txndate, duedate
+        , InvAmtBPMSUSD, InvAmtBPMS
+        , CASE WHEN approvestatus = True THEN InvAmtBPMS END AS approved_InvAmtBPMS
+        , CASE WHEN approvestatus = False THEN InvAmtBPMS END AS pending_InvAmtBPMS
+        , approvedate
+        , CASE WHEN ispaid = True AND balance = 0 THEN InvAmtQuickbook END AS recvd_amnt
+        , CASE WHEN ispaid = False THEN InvAmtQuickbook END AS pending_amnt
+        , proj_overdue_category
+        , sync_date
+    from view_project_invoice
+    -- where projectid = 77793
+),
+inv_date_grp AS (
+    select 
+    projectid
+    , count(InvoiceNo) AS no_of_invraised
+    , max(inv_date) AS max_inv_date
+    , max(txndate) AS max_txndate
+    , max(duedate) AS max_duedate
+    , sum(InvAmtBPMSUSD) AS InvAmtBPMSUSD
+    , sum(approved_InvAmtBPMS) AS approved_InvAmtBPMS
+    , sum(pending_InvAmtBPMS) AS pending_InvAmtBPMS
+    , max(approvedate) AS max_inv_apprvd_date
+    , sum(pending_amnt) AS pending_quickbook_amnt
+    , sum(recvd_amnt) AS recvd_quickbook_amnt
+    , proj_overdue_category
+    , max(sync_date) as quickbook_sync_date
+    from inv_data 
+    GROUP BY projectid, proj_overdue_category
+),
+-- Employees count 
+emp_allocation_table AS (
+    SELECT 
+    projectid, 
+    COUNT(DISTINCT unique_id) AS emp_count
+    FROM (
+        SELECT 
+            DISTINCT a.PMId AS unique_id, 
+            b.projectid 
+        FROM 
+            bpmsv2_dbo_tbl_team_defined_project_bypdh a
+        INNER JOIN 
+            bpmsv2_dbo_project_breakup b ON a.project_breakupid = b.project_breakupid 
+        INNER JOIN 
+            bpmsv2_dbo_employee_userdetails C ON a.pmid = c.empid and c.availability = True
+        
+        UNION 
+    
+        SELECT 
+            DISTINCT a.TMId AS unique_id, 
+            b.projectid 
+        FROM 
+            bpmsv2_dbo_tbl_team_defined_project_bypdh a
+        INNER JOIN 
+            bpmsv2_dbo_project_breakup b ON a.project_breakupid = b.project_breakupid
+        INNER JOIN 
+            bpmsv2_dbo_employee_userdetails C ON a.pmid = c.empid and c.availability = True
+        
+    ) AS subquery
+    GROUP BY projectid
+), 
+project_tbl AS(
+    select 
+    -- Project Details
+          pp.projectid, pp.projectname, pp.projectcode, mcp.client_name
+          , ppd.contractvaluelumpsum_currency as contractvalue
+          , ppd.contractvaluelumpsum as contractvalueUSD
+          ,eh.hours as estimated_hours, 
+          ppd.currency, ppd.lod, eh.proj_brkp_counts, eh.proj_status, at.emp_count
+        , ppd.projectarea, mproj.stage, pp.startdate, pp.enddate, pp.estimatedenddate, pp.serverfolder, eu.fullname as published_by
+        , eu1.fullname as Estimated_BY, mct.client_type, mc.contracttype, mvert.vertical, ind.InvAmtBPMSUSD
+        , ind.no_of_invraised, ind.max_inv_date, ind.approved_InvAmtBPMS, ind.pending_InvAmtBPMS, ind.max_inv_apprvd_date, ind.pending_quickbook_amnt
+        , ind.recvd_quickbook_amnt, ind.max_txndate, ind.max_duedate, ind.proj_overdue_category, ind.quickbook_sync_date
+    -- Case Statement
+        , (CASE WHEN ppd.nda = TRUE THEN 'NDA' ELSE 'NON-NDA' END) AS nda
+        , (CASE WHEN ppd.isIconic = TRUE THEN 'ICONIC PROJECT' ELSE 'NA' END) AS isIconic
+    -- Client Details
+        , mcp.salesforceaccountid, mcp.clientemail, mcp.clientcontact, mcity.city ,msts.region as State, mcon.country, mcont.continent
+        , ppd.scopeofwork, ppd.software_platform, ppd.output_data, ppd.tradep
+    -- Extra Details 
+        , ppd.po_number, ppd.revno, ppd.revdescription, ppd.revdate, itm.invoice_place, eu2.fullname as Client_Relationship_Spoc, minf.frequency AS inv_frequency
+    from "bpmsv2_dbo_projects_profile" pp
+    inner join "bpmsv2_dbo_project_profiledetails" ppd on pp.projectid = ppd.projectid
+    inner join estimated_hours eh on pp.projectid = eh.projectid
+    left join inv_date_grp ind ON pp.projectid = ind.projectid
+    left join emp_allocation_table at ON pp.projectid = at.projectid
+    left join "bpmsv2_dbo_master_client_profile" mcp on pp.clientname = mcp.clientid
+    left join "bpmsv2_dbo_master_client_type" mct on pp.clienttype = mct.cltpid
+    left join "bpmsv2_dbo_master_contracttype" mc on pp.contracttype = mc.ctid
+    left join "bpmsv2_dbo_employee_userdetails" eu on pp.entryby = eu.empid
+    left join "bpmsv2_dbo_employee_userdetails" eu1 on pp.estby = eu1.empid
+    left join "bpmsv2_dbo_employee_userdetails" eu2 on ppd.rmempid = eu2.empid
+    left join "bpmsv2_dbo_master_country" mcon on ppd.countryid = mcon.countryid
+    left join "bpmsv2_dbo_master_state" msts on ppd.regionid = msts.regionid
+    left join "bpmsv2_dbo_master_cities" mcity on ppd.cityid = mcity.cityid
+    left join "bpmsv2_dbo_master_continent" mcont on ppd.continentid = mcont.continentid
+    left join "bpmsv2_dbo_master_projectstage" mproj on ppd.stageid = mproj.stageid
+    left join "bpmsv2_dbo_master_vertical" mvert on ppd.verticalid = mvert.verticalid
+    left join "bpmsv2_dbo_tbl_invoice_template_master" itm on ppd.invforid = itm.srno
+    left join "bpmsv2_dbo_master_invoice_freq" minf on ppd.invfrqid = minf.invfrqid
+)
+select * from project_tbl where projectid = 77793

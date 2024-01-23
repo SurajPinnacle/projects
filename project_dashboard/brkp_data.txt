@@ -1,0 +1,40 @@
+WITH 
+project_breakup_data AS (
+    select 
+        pb.projectid
+        , pb.project_breakupid
+        --, count() OVER (PARTITION BY projectid) AS proj_brkp_counts
+        , CAST(pb.entrydate as date) entrydate
+        , hours AS brkp_hours
+        , ROUND((SUM(hours) OVER (PARTITION BY projectid)), 2) AS proj_hours
+        , contractvaluelumpsum_currency AS contractvalue_currency
+        , contractvaluelumpsum As contractvalue_USD
+        , currency
+        , md.department
+        , eu.fullname as PDH_name
+        , array_join(array_agg(eu.fullname) OVER (PARTITION BY pb.projectid), ',') AS proj_PDHs
+        , ms.status
+        , array_join(array_agg(ms.status) OVER (PARTITION BY pb.projectid), ',') AS proj_status_grp
+        , pb.iseligibleforcf AS eligible_for_ClientFeedback
+        , pb.ispubaws as published_on_AWS
+        , pb.folderallocationrequest
+        , pw.projectweightage
+    from bpmsv2_dbo_project_breakup pb
+    left join bpmsv2_dbo_master_department md ON pb.deptid = md.deptid
+    left join bpmsv2_dbo_employee_userdetails eu ON pb.empid = eu.empid
+    left join bpmsv2_dbo_master_statustype ms ON pb.statusid = ms.statusid
+    left join bpmsv2_dbo_master_projectweightage pw ON pb.projectweightageid = pw.projectweightageid
+),
+prject_status_data AS (
+    select 
+        t.*
+        , CASE 
+            WHEN position('Running' IN t.proj_status_grp) > 0 THEN 'Running'
+            WHEN position('Transferred' IN t.proj_status_grp) > 0 THEN 'Transferred'
+            WHEN position('Finished' IN t.proj_status_grp) > 0 THEN 'Finished'
+            WHEN position('Hold' IN t.proj_status_grp) > 0 THEN 'Hold'
+            ELSE 'Cancelled' 
+        END AS proj_status 
+    from project_breakup_data t
+)
+select * from prject_status_data where projectid = 77419
