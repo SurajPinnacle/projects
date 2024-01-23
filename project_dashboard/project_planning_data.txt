@@ -1,0 +1,28 @@
+With 
+project_brkp_data AS (
+    select 
+        pb.projectid, pb.project_breakupid, pf.project_fragmentationid, pfd.project_fragmentdtlsid, pt.areazoneid, pt.project_assigntmid, pt.project_assigntlid
+        , pb.deptid, md.department, pb.empid AS PDH_ID, eu.fullname AS PDH_Name, pb.hours AS brkp_hours, pb.contractvaluelumpsum AS contractvalue_USD
+        , md.department, ms.status, pb.iseligibleforcf AS eligible_for_ClientFeedback, pb.ispubaws as published_on_AWS
+        , pb.folderallocationrequest, pw.projectweightage, pf.type AS fragmentation_type, pf.bhour as fragment_hours
+        , pfd.details AS fragmentationdtls_type, pfd.hour AS fragment_dtls_hours
+        , CAST(pfd.entrydate as date) AS fragment_dtls_entrydate
+        , pt.entryby AS PM_ID, eu1.fullname AS PM_Name, pz.floorid, pt.hour AS areazone_hours, CAST(pt.startdate as date) AS area_startdate
+        , cast(pt.enddate as date) AS area_enddate
+        , pz.areazone AS areazone_type, pz.areacovered, pz.entryby, pz.areaweightageid, cast(pz.entrydate as date) AS areazone_entrydate
+    from "bpmsv2_dbo_project_breakup" pb 
+    left join bpmsv2_dbo_project_fragmentation pf ON pb.project_breakupid = pf.projectbrekupid
+    left join bpmsv2_dbo_project_fragmentationdtls pfd ON pf.project_fragmentationid = pfd.project_fragmentationid
+    left join bpmsv2_dbo_project_tm pt ON pb.project_breakupid = pt.projectbrkupid
+    left join bpmsv2_dbo_project_areazone pz ON pt.areazoneid = pz.areazoneid
+    left join bpmsv2_dbo_master_department md ON pb.deptid = md.deptid
+    -- PDH Name
+    left join bpmsv2_dbo_employee_userdetails eu ON pb.empid = eu.empid
+    -- PM Name
+    left join bpmsv2_dbo_employee_userdetails eu1 ON pt.entryby = eu1.empid
+    left join bpmsv2_dbo_master_statustype ms ON pb.statusid = ms.statusid
+    left join bpmsv2_dbo_master_projectweightage pw ON pb.projectweightageid = pw.projectweightageid
+    -- where pb.projectid = 77793
+)
+
+select * from project_brkp_data where projectid = 77793

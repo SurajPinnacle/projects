@@ -8,8 +8,8 @@ inv_data AS(
     select 
         projectid, project_breakupid, InvoiceNo, inv_date, txndate, duedate
         , InvAmtBPMSUSD, InvAmtBPMS
-        , CASE WHEN approvestatus = True THEN InvAmtBPMS END AS approved_InvAmtBPMS
-        , CASE WHEN approvestatus = False THEN InvAmtBPMS END AS pending_InvAmtBPMS
+        , CASE WHEN approvestatus = True THEN InvAmtBPMSUSD END AS approved_InvAmtBPMS
+        , CASE WHEN approvestatus = False THEN InvAmtBPMSUSD END AS pending_InvAmtBPMS
         , approvedate
         , CASE WHEN ispaid = True AND balance = 0 THEN InvAmtQuickbook END AS recvd_amnt
         , CASE WHEN ispaid = False THEN InvAmtQuickbook END AS pending_amnt
@@ -25,7 +25,7 @@ inv_date_grp AS (
     , max(inv_date) AS max_inv_date
     , max(txndate) AS max_txndate
     , max(duedate) AS max_duedate
-    , sum(InvAmtBPMSUSD) AS InvAmtBPMSUSD
+    , sum(InvAmtBPMS) AS InvAmtBPMSCurrency
     , sum(approved_InvAmtBPMS) AS approved_InvAmtBPMS
     , sum(pending_InvAmtBPMS) AS pending_InvAmtBPMS
     , max(approvedate) AS max_inv_apprvd_date
@@ -71,12 +71,12 @@ project_tbl AS(
     select 
     -- Project Details
           pp.projectid, pp.projectname, pp.projectcode, mcp.client_name
-          , ppd.contractvaluelumpsum_currency as contractvalue
-          , ppd.contractvaluelumpsum as contractvalueUSD
+          , ppd.contractvaluelumpsum_currency as contractvalue_currency
+          , ppd.contractvaluelumpsum as contractvalue
           ,eh.hours as estimated_hours, 
           ppd.currency, ppd.lod, eh.proj_brkp_counts, eh.proj_status, at.emp_count
         , ppd.projectarea, mproj.stage, pp.startdate, pp.enddate, pp.estimatedenddate, pp.serverfolder, eu.fullname as published_by
-        , eu1.fullname as Estimated_BY, mct.client_type, mc.contracttype, mvert.vertical, ind.InvAmtBPMSUSD
+        , eu1.fullname as Estimated_BY, mct.client_type, mc.contracttype, mvert.vertical, ind.InvAmtBPMSCurrency
         , ind.no_of_invraised, ind.max_inv_date, ind.approved_InvAmtBPMS, ind.pending_InvAmtBPMS, ind.max_inv_apprvd_date, ind.pending_quickbook_amnt
         , ind.recvd_quickbook_amnt, ind.max_txndate, ind.max_duedate, ind.proj_overdue_category, ind.quickbook_sync_date
     -- Case Statement

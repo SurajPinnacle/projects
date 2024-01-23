@@ -1,0 +1,6 @@
+CREATE OR REPLACE VIEW "view_master_worktype" AS 
+SELECT
+  t.*
+, (CASE WHEN (t.worktypename IN ('Modeling', 'Hanger', 'Template Creation', 'Design validation & Calculation', 'Rendering', 'Redline MarkUp', 'Project Monitoring')) THEN 'Modeling' WHEN (t.worktypename IN ('Project Planning', 'RFI Management', 'Input Study', 'Project Documentation', 'Project Activity')) THEN 'Project Planning' WHEN (t.worktypename IN ('Rendering', '4D and 5D', '4D', 'CSD', '5 D')) THEN 'Rendering' WHEN (t.worktypename = 'QA Update') THEN 'QA Update' WHEN (t.worktypename = 'QA Check') THEN 'QA Check' WHEN (t.worktypename IN ('Annotation and Aesthetical', '2D Drawing', 'Drafting and Detailing', 'Shop Drawing', 'BOQ')) THEN 'Shop Drawing' WHEN (t.worktypename = 'Coordination') THEN 'Coordination' ELSE 'Others' END) emp_worktype
+FROM
+  bpmsv2_dbo_master_worktype t
