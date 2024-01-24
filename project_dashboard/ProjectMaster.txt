@@ -7,11 +7,11 @@ estimated_hours AS(
 -- Actual project timeline ---
 project_timelines AS (
     SELECT 
-        a.projectid, a.project_breakupid, min(tl_startdate) as proj_startdate, max(tl_enddate) as proj_enddate, b.empid AS PDH_ID,
+        a.projectid, min(tl_startdate) as proj_startdate, max(tl_enddate) as proj_enddate, 
         date_diff('day', min(tl_startdate), max(tl_enddate)) + 1 as project_running_days
     FROM bpmsv2_dbo_project_assigntl a
     inner join bpmsv2_dbo_project_breakup b On a.project_breakupid = b.project_breakupid
-    GROUP BY a.projectid, a.project_breakupid, b.empid
+    GROUP BY a.projectid
 ),
 -- Invoice Data---
 inv_data AS(
@@ -46,6 +46,15 @@ inv_date_grp AS (
     from inv_data 
     GROUP BY projectid, proj_overdue_category
 ),
+--- COE Score start---
+max_date as (
+    select projectid, max(coeadid) as mcoeadid from "bpmsv2_dbo_tbl_coeauditscore_2019" where ispublished = True group by projectid
+),
+coe_uniq_tbl AS (
+    select a.projectid, a.coeadid, a.publishdate, a.score 
+    from bpmsv2_dbo_tbl_coeauditscore_2019 a inner join max_date b on a.projectid=b.projectid and a.coeadid = b.mcoeadid
+),
+--- COE Score End---
 -- Employees count 
 emp_allocation_table AS (
     SELECT 
@@ -93,6 +102,7 @@ project_tbl AS(
         , eu1.fullname as Estimated_BY, mct.client_type, mc.contracttype, mvert.vertical, ind.InvAmtBPMSCurrency
         , ind.no_of_invraised, ind.max_inv_date, ind.approved_InvAmtBPMS, ind.pending_InvAmtBPMS, ind.max_inv_apprvd_date, ind.pending_quickbook_amnt
         , ind.recvd_quickbook_amnt, ind.max_txndate, ind.max_duedate, ind.proj_overdue_category, ind.quickbook_sync_date
+        , cast(cut.publishdate as date) AS COE_Score_Date, cut.score AS COE_SCORE
     -- Case Statement
         , (CASE WHEN ppd.nda = TRUE THEN 'NDA' ELSE 'NON-NDA' END) AS nda
         , (CASE WHEN ppd.isIconic = TRUE THEN 'ICONIC PROJECT' ELSE 'NA' END) AS isIconic
@@ -102,10 +112,12 @@ project_tbl AS(
     -- Extra Details 
         , ppd.po_number, ppd.revno, ppd.revdescription, ppd.revdate, itm.invoice_place, eu2.fullname as Client_Relationship_Spoc, minf.frequency AS inv_frequency
     from "bpmsv2_dbo_projects_profile" pp
-    inner join "bpmsv2_dbo_project_profiledetails" ppd on pp.projectid = ppd.projectid
-    inner join estimated_hours eh ON pp.projectid = eh.projectid
-    inner join project_timelines pt ON pp.projectid = pt.projectid
+    left join "bpmsv2_dbo_project_profiledetails" ppd on pp.projectid = ppd.projectid
+    left join estimated_hours eh ON pp.projectid = eh.projectid
+    left join project_timelines pt ON pp.projectid = pt.projectid
     left join inv_date_grp ind ON pp.projectid = ind.projectid
+    left join coe_uniq_tbl cut ON pp.projectid = cut.projectid
+    left join "bpmsv2_dbo_tbl_coeauditscore_2019" coe ON pp.projectid = coe.projectid
     left join emp_allocation_table at ON pp.projectid = at.projectid
     left join "bpmsv2_dbo_master_client_profile" mcp on pp.clientname = mcp.clientid
     left join "bpmsv2_dbo_master_client_type" mct on pp.clienttype = mct.cltpid
