@@ -4,6 +4,16 @@ estimated_hours AS(
     from view_proj_brkp_data 
     group by projectid, proj_status
 ),
+-- Actual project timeline ---
+project_timelines AS (
+    SELECT 
+        a.projectid, a.project_breakupid, min(tl_startdate) as proj_startdate, max(tl_enddate) as proj_enddate, b.empid AS PDH_ID,
+        date_diff('day', min(tl_startdate), max(tl_enddate)) + 1 as project_running_days
+    FROM bpmsv2_dbo_project_assigntl a
+    inner join bpmsv2_dbo_project_breakup b On a.project_breakupid = b.project_breakupid
+    GROUP BY a.projectid, a.project_breakupid, b.empid
+),
+-- Invoice Data---
 inv_data AS(
     select 
         projectid, project_breakupid, InvoiceNo, inv_date, txndate, duedate
@@ -71,11 +81,15 @@ project_tbl AS(
     select 
     -- Project Details
           pp.projectid, pp.projectname, pp.projectcode, mcp.client_name
-          , ppd.contractvaluelumpsum_currency as contractvalue_currency
-          , ppd.contractvaluelumpsum as contractvalue
-          ,eh.hours as estimated_hours, 
-          ppd.currency, ppd.lod, eh.proj_brkp_counts, eh.proj_status, at.emp_count
-        , ppd.projectarea, mproj.stage, pp.startdate, pp.enddate, pp.estimatedenddate, pp.serverfolder, eu.fullname as published_by
+        , ppd.contractvaluelumpsum_currency as contractvalue_currency
+        , ppd.contractvaluelumpsum as contractvalue
+        , eh.hours as estimated_hours
+        , ppd.currency, ppd.lod, eh.proj_brkp_counts, eh.proj_status, at.emp_count
+        , ppd.projectarea, mproj.stage
+        , cast(pp.startdate as date) as planned_startdate, cast(pp.enddate as date) as planned_enddate
+        , cast(pp.estimatedenddate as date) as planned_estimatedenddate 
+        , pt.proj_startdate AS actual_startdate, pt.proj_startdate AS actual_enddate
+        , pp.serverfolder, eu.fullname as published_by
         , eu1.fullname as Estimated_BY, mct.client_type, mc.contracttype, mvert.vertical, ind.InvAmtBPMSCurrency
         , ind.no_of_invraised, ind.max_inv_date, ind.approved_InvAmtBPMS, ind.pending_InvAmtBPMS, ind.max_inv_apprvd_date, ind.pending_quickbook_amnt
         , ind.recvd_quickbook_amnt, ind.max_txndate, ind.max_duedate, ind.proj_overdue_category, ind.quickbook_sync_date
@@ -89,7 +103,8 @@ project_tbl AS(
         , ppd.po_number, ppd.revno, ppd.revdescription, ppd.revdate, itm.invoice_place, eu2.fullname as Client_Relationship_Spoc, minf.frequency AS inv_frequency
     from "bpmsv2_dbo_projects_profile" pp
     inner join "bpmsv2_dbo_project_profiledetails" ppd on pp.projectid = ppd.projectid
-    inner join estimated_hours eh on pp.projectid = eh.projectid
+    inner join estimated_hours eh ON pp.projectid = eh.projectid
+    inner join project_timelines pt ON pp.projectid = pt.projectid
     left join inv_date_grp ind ON pp.projectid = ind.projectid
     left join emp_allocation_table at ON pp.projectid = at.projectid
     left join "bpmsv2_dbo_master_client_profile" mcp on pp.clientname = mcp.clientid

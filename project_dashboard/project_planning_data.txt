@@ -4,7 +4,8 @@ log_hours_data AS (
 ),
 project_planning_data AS (
     select 
-        pb.projectid, pb.project_breakupid, pf.project_fragmentationid, pfd.project_fragmentdtlsid, pt.areazoneid, pt.project_assigntmid, pt.project_assigntlid
+        pb.projectid, pb.project_breakupid, md.department, ms.status, pf.project_fragmentationid, pfd.project_fragmentdtlsid, pt.areazoneid
+        , pt.project_assigntmid, pt.project_assigntlid
         , pb.empid AS PDH_ID, eu.fullname AS PDH_Name, pb.hours AS brkp_hours
         , pf.type AS fragmentation_type, pf.bhour as fragment_hours
         , pfd.details AS fragmentationdtls_type, pfd.hour AS fragment_dtls_hours
@@ -20,6 +21,8 @@ project_planning_data AS (
     left join bpmsv2_dbo_project_tm pt ON pb.project_breakupid = pt.projectbrkupid
     left join view_master_worktype mw ON pt.worktypeid = mw.worktypeid
     left join bpmsv2_dbo_project_areazone pz ON pt.areazoneid = pz.areazoneid
+    left join bpmsv2_dbo_master_department md ON pb.deptid = md.deptid
+    left join bpmsv2_dbo_master_statustype ms ON pb.statusid = ms.statusid
     left join log_hours_data pta ON pt.project_assigntmid = pta.project_assigntmid
     -- PDH Name
     left join bpmsv2_dbo_employee_userdetails eu ON pb.empid = eu.empid
