@@ -1,0 +1,7 @@
+select 
+    co.projectid, breakupid, contracthours, contractvalue, requestdate
+    , eu.fullname as requested_by, eu1.fullname as approved_by, approveddate, approvalstatus
+    , correctedhour, correctedvalue, files, ponumber, podate
+from bpmsv2_dbo_tbl_change_order co
+left join bpmsv2_dbo_employee_userdetails eu ON co.requestby = eu.empid
+left join bpmsv2_dbo_employee_userdetails eu1 ON co.approveby = eu1.empid
