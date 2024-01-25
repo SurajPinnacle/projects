@@ -7,6 +7,8 @@ project_breakup_data AS (
         , CAST(pb.entrydate as date) entrydate
         , hours AS brkp_hours
         , ROUND((SUM(hours) OVER (PARTITION BY projectid)), 2) AS proj_hours
+        , contractvalue
+        , projectrate
         , contractvaluelumpsum_currency AS contractvalue_currency
         , contractvaluelumpsum As contractvalue_USD
         , currency
@@ -29,6 +31,12 @@ prject_status_data AS (
     select 
         t.*
         , CASE 
+            WHEN (contractvalue_USD is not null OR contractvalue_USD != 0) THEN contractvalue_USD
+            WHEN (projectrate is not null OR projectrate != 0) THEN (projectrate * brkp_hours)
+            WHEN (contractvalue is not null OR contractvalue != 0) THEN contractvalue
+            ELSE 0.00
+            END as cal_contractvalue
+        , CASE 
             WHEN position('Running' IN t.proj_status_grp) > 0 THEN 'Running'
             WHEN position('Transferred' IN t.proj_status_grp) > 0 THEN 'Transferred'
             WHEN position('Finished' IN t.proj_status_grp) > 0 THEN 'Finished'
@@ -37,4 +45,4 @@ prject_status_data AS (
         END AS proj_status 
     from project_breakup_data t
 )
-select * from prject_status_data where projectid = 77419
+select * from prject_status_data where projectid = 77319

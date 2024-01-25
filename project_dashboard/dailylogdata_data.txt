@@ -1,0 +1,86 @@
+WITH 
+-- Proj Estimated Hours --
+proj_est_hours AS (
+    select projectid, sum(hours) as proj_est_hours from bpmsv2_dbo_project_breakup group by projectid
+),
+-- PDH Assing hours start ---
+project_timelines AS (
+    SELECT 
+        a.projectid, a.project_breakupid, min(tl_startdate) as proj_startdate, max(tl_enddate) as proj_enddate, b.empid AS PDH_ID, max(b.hours) as bkp_hours
+        , date_diff('day', min(tl_startdate), max(tl_enddate)) + 1 as project_running_days
+    FROM bpmsv2_dbo_project_assigntl a
+    inner join bpmsv2_dbo_project_breakup b On a.project_breakupid = b.project_breakupid
+    GROUP BY a.projectid, a.project_breakupid, b.empid
+),
+-- Daily Project assigned hours 
+daily_project_breakup AS (
+    SELECT
+        projectid, project_breakupid,
+        date_add('day', n.day_offset, tl_startdate) AS assign_date,
+        assigned_hour / (date_diff('DAY', tl_startdate, tl_enddate) + 1) AS perday_hour
+    FROM bpmsv2_dbo_project_assigntl p
+    CROSS JOIN UNNEST(sequence(0, 365)) AS n (day_offset)
+    WHERE 
+        date_add('day', n.day_offset, p.tl_startdate) <= p.tl_enddate
+),
+-- Grouping the output on assign date to get the daily assigned hours
+daily_project_breakup_group AS (
+    SELECT 
+    projectid, project_breakupid, assign_date ,sum(perday_hour) AS pdh_assigned_hour
+    FROM 
+        daily_project_breakup 
+    GROUP BY projectid, project_breakupid, assign_date
+),
+--- PDH Assing hours start end ---
+--- PM Assign hours start ---
+daily_project_tm AS (
+    SELECT
+        projectid, projectbrkupid, project_assigntmid, cshid AS PDH_ID, entryby AS PM_ID, worktypeid, exercise,  
+        cast(date_add('day', n.day_offset, startdate) as date) AS assign_date,
+        hour / (date_diff('DAY', startdate, enddate) + 1) AS perday_hour
+    FROM bpmsv2_dbo_project_tm p
+    CROSS JOIN UNNEST(sequence(0, 365)) AS n (day_offset)
+    WHERE 
+        date_add('day', n.day_offset, p.startdate) <= p.enddate
+),
+daily_project_tm_group AS (
+    SELECT projectid, projectbrkupid,project_assigntmid, PDH_ID, PM_ID, worktypeid, exercise, assign_date, SUM(perday_hour) AS PM_assign_hour 
+    FROM daily_project_tm
+    GROUP BY projectid, projectbrkupid,project_assigntmid, PDH_ID, PM_ID, worktypeid, exercise, assign_date
+),
+daily_project_worktype AS (
+    SELECT a.*, b.emp_worktype AS worktype
+    FROM daily_project_tm_group a
+    INNER JOIN view_master_worktype b ON a.worktypeid = b.worktypeid   
+)
+--- PM Assign hours end ---
+select 
+a.projectid
+, a.project_breakupid
+, peh.proj_est_hours 
+, pt.bkp_hours as brkp_est_hours
+, b.project_assigntmid
+, pt.proj_startdate
+, pt.proj_enddate
+, a.assign_date
+, a.pdh_assigned_hour
+, pt.PDH_ID
+, eu.fullname AS PDH_Name
+, b.PM_assign_hour
+, b.PM_ID
+, eu1.fullname AS PM_Name
+, b.worktype
+, b.exercise
+, ptact.logid
+, ptact.log_hour
+, ptact.entryby
+, eu2.fullname AS TM_Name
+from daily_project_breakup_group a
+left join daily_project_worktype b On a.projectid = b.projectid AND a.assign_date = b.assign_date
+left join project_timelines pt ON a.projectid = pt.projectid AND a.project_breakupid = pt.project_breakupid
+left join proj_est_hours peh ON a.projectid = peh.projectid
+left join bpmsv2_dbo_project_tmactivity ptact ON b.project_assigntmid = ptact.project_assigntmid AND a.assign_date = cast(ptact.entrydate as date)
+left join bpmsv2_dbo_employee_userdetails eu ON pt.PDH_ID = eu.empid
+left join bpmsv2_dbo_employee_userdetails eu1 ON b.PM_ID = eu1.empid
+left join bpmsv2_dbo_employee_userdetails eu2 ON ptact.entryby = eu2.empid
+where a.projectid = 77190
