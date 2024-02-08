@@ -140,8 +140,8 @@ project_tbl AS(
     left join "bpmsv2_dbo_master_country" mcon on ppd.countryid = mcon.countryid
     left join "bpmsv2_dbo_master_state" msts on ppd.regionid = msts.regionid
     left join "bpmsv2_dbo_master_cities" mcity on ppd.cityid = mcity.cityid
-    left join bpmsv2_dbo_tbl_master_forecast_continentcountrymapping ccon ON mcon.countryid = ccon.countryid
-    left join "bpmsv2"."bpmsv2_dbo_tbl_forecast_master_regiongroup" m2 ON ccon.masterregionid = m2.srno
+    left join "bpmsv2_dbo_tbl_master_forecast_continentcountrymapping" ccon ON mcon.countryid = ccon.countryid
+    left join "bpmsv2_dbo_tbl_forecast_master_regiongroup" m2 ON ccon.masterregionid = m2.srno
     left join "bpmsv2_dbo_master_continent" mcont on ppd.continentid = mcont.continentid
     left join "bpmsv2_dbo_master_projectstage" mproj on ppd.stageid = mproj.stageid
     left join "bpmsv2_dbo_master_vertical" mvert on ppd.verticalid = mvert.verticalid
