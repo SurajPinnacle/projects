@@ -1,14 +1,14 @@
 WITH
 estimated_hours AS(
-    select projectid, count(projectid) as proj_brkp_counts, sum(brkp_hours) as hours, proj_status 
+    select projectid, count(projectid) as proj_brkp_counts, sum(brkp_hours) as hours, proj_status, sum(cal_contractvalue ) as cal_contractvalue
     from view_proj_brkp_data 
     group by projectid, proj_status
 ),
 -- Actual project timeline ---
 project_timelines AS (
     SELECT 
-        a.projectid, min(tl_startdate) as proj_startdate, max(tl_enddate) as proj_enddate, 
-        date_diff('day', min(tl_startdate), max(tl_enddate)) + 1 as project_running_days
+        a.projectid, min(tl_startdate) as proj_startdate, max(tl_enddate) as proj_enddate 
+        ,date_diff('day', min(tl_startdate), max(tl_enddate)) + 1 as project_running_days
     FROM bpmsv2_dbo_project_assigntl a
     inner join bpmsv2_dbo_project_breakup b On a.project_breakupid = b.project_breakupid
     GROUP BY a.projectid
@@ -20,7 +20,7 @@ inv_data AS(
         , InvAmtBPMSUSD, InvAmtBPMS
         , CASE WHEN approvestatus = True THEN InvAmtBPMSUSD END AS approved_InvAmtBPMS
         , CASE WHEN approvestatus = False THEN InvAmtBPMSUSD END AS pending_InvAmtBPMS
-        , approvedate
+        , approvedate, InvAmtQuickbook AS quickbook_inv_amnt
         , CASE WHEN ispaid = True AND balance = 0 THEN InvAmtQuickbook END AS recvd_amnt
         , CASE WHEN ispaid = False THEN InvAmtQuickbook END AS pending_amnt
         , proj_overdue_category
@@ -35,10 +35,12 @@ inv_date_grp AS (
     , max(inv_date) AS max_inv_date
     , max(txndate) AS max_txndate
     , max(duedate) AS max_duedate
+    , SUM(InvAmtBPMSUSD) AS InvAmtBPMSUSD
     , sum(InvAmtBPMS) AS InvAmtBPMSCurrency
     , sum(approved_InvAmtBPMS) AS approved_InvAmtBPMS
     , sum(pending_InvAmtBPMS) AS pending_InvAmtBPMS
     , max(approvedate) AS max_inv_apprvd_date
+    , sum(quickbook_inv_amnt) AS quickbook_inv_amnt
     , sum(pending_amnt) AS pending_quickbook_amnt
     , sum(recvd_amnt) AS recvd_quickbook_amnt
     , proj_overdue_category
@@ -89,35 +91,45 @@ emp_allocation_table AS (
 project_tbl AS(
     select 
     -- Project Details
-          pp.projectid, pp.projectname, pp.projectcode, mcp.client_name
-        , ppd.contractvaluelumpsum_currency as contractvalue_currency
-        , ppd.contractvaluelumpsum as contractvalue
-        , eh.hours as estimated_hours
-        , ppd.currency, ppd.lod, eh.proj_brkp_counts, eh.proj_status, at.emp_count
-        , ppd.projectarea, mproj.stage
+          pp.projectid
+        , COALESCE(pp.projectname, 'other') as projectname, COALESCE(pp.projectcode, 'other') as projectcode, COALESCE(mcp.client_name, 'other') as client_name
+        , COALESCE(ppd.currency, 'NA') as currency, ppd.contractvaluelumpsum_currency as contractvalue_currency
+        , eh.cal_contractvalue 
+        , ppd.contractvaluelumpsum as contractvalue, eh.hours as estimated_hours, COALESCE(ppd.lod, 'other') as lod, eh.proj_brkp_counts
+        , COALESCE(eh.proj_status, 'other') as proj_status, at.emp_count
+        , ppd.projectarea, COALESCE(mproj.stage, 'other') as stage
         , cast(pp.startdate as date) as planned_startdate, cast(pp.enddate as date) as planned_enddate
-        , cast(pp.estimatedenddate as date) as planned_estimatedenddate 
-        , pt.proj_startdate AS actual_startdate, pt.proj_startdate AS actual_enddate
-        , pp.serverfolder, eu.fullname as published_by
-        , eu1.fullname as Estimated_BY, mct.client_type, mc.contracttype, mvert.vertical, ind.InvAmtBPMSCurrency
-        , ind.no_of_invraised, ind.max_inv_date, ind.approved_InvAmtBPMS, ind.pending_InvAmtBPMS, ind.max_inv_apprvd_date, ind.pending_quickbook_amnt
+        , COALESCE(cast(pp.estimatedenddate as date), cast(pp.enddate as date)) as planned_estimatedenddate 
+        , pt.proj_startdate AS actual_startdate, pt.proj_enddate AS actual_enddate
+        , COALESCE(pp.serverfolder, 'NA') as serverfolder, COALESCE(eu.fullname, 'NA') as published_by
+        , COALESCE(eu1.fullname, 'NA') as Estimated_BY, COALESCE(mct.client_type, 'NA') as client_type, COALESCE(mc.contracttype, 'other') as contracttype
+        , COALESCE(mvert.vertical, 'other') as vertical
+    --- Invoice Data ---
+        , ind.InvAmtBPMSCurrency, ind.no_of_invraised, ind.max_inv_date
+        , ind.InvAmtBPMSUSD, ind.approved_InvAmtBPMS, ind.pending_InvAmtBPMS, ind.max_inv_apprvd_date
+        , ind.quickbook_inv_amnt, ind.pending_quickbook_amnt
         , ind.recvd_quickbook_amnt, ind.max_txndate, ind.max_duedate, ind.proj_overdue_category, ind.quickbook_sync_date
         , cast(cut.publishdate as date) AS COE_Score_Date, cut.score AS COE_SCORE
     -- Case Statement
         , (CASE WHEN ppd.nda = TRUE THEN 'NDA' ELSE 'NON-NDA' END) AS nda
         , (CASE WHEN ppd.isIconic = TRUE THEN 'ICONIC PROJECT' ELSE 'NA' END) AS isIconic
     -- Client Details
-        , mcp.salesforceaccountid, mcp.clientemail, mcp.clientcontact, mcity.city ,msts.region as State, mcon.country, mcont.continent
-        , ppd.scopeofwork, ppd.software_platform, ppd.output_data, ppd.tradep
+        , COALESCE(mcp.salesforceaccountid, 'NA') as salesforceaccountid, COALESCE(mcp.clientemail, 'NA') as clientemail
+        , COALESCE(mcp.clientcontact, 'NA') as clientcontact, COALESCE(mcity.city, 'other') as city ,COALESCE(msts.region, 'other') as State
+        , COALESCE(mcon.country, 'other') as country
+        , COALESCE(mcont.continent, 'other') as continent
+        , COALESCE(m2.region, 'Others') as region
+        , COALESCE(ppd.scopeofwork, 'other') as scopeofwork, COALESCE(ppd.software_platform, 'NA') as software_platform
+        , COALESCE(ppd.output_data, 'NA') as output_data, COALESCE(ppd.tradep, 'NA') as tradep
     -- Extra Details 
-        , ppd.po_number, ppd.revno, ppd.revdescription, ppd.revdate, itm.invoice_place, eu2.fullname as Client_Relationship_Spoc, minf.frequency AS inv_frequency
+        , COALESCE(ppd.po_number, 'NA') as po_number, ppd.revno, COALESCE(ppd.revdescription, 'NA') as revdescription, ppd.revdate
+        , COALESCE(itm.invoice_place, 'NA') as invoice_place, COALESCE(eu2.fullname, 'NA') as Client_Relationship_Spoc, minf.frequency AS inv_frequency
     from "bpmsv2_dbo_projects_profile" pp
     left join "bpmsv2_dbo_project_profiledetails" ppd on pp.projectid = ppd.projectid
     left join estimated_hours eh ON pp.projectid = eh.projectid
     left join project_timelines pt ON pp.projectid = pt.projectid
     left join inv_date_grp ind ON pp.projectid = ind.projectid
     left join coe_uniq_tbl cut ON pp.projectid = cut.projectid
-    left join "bpmsv2_dbo_tbl_coeauditscore_2019" coe ON pp.projectid = coe.projectid
     left join emp_allocation_table at ON pp.projectid = at.projectid
     left join "bpmsv2_dbo_master_client_profile" mcp on pp.clientname = mcp.clientid
     left join "bpmsv2_dbo_master_client_type" mct on pp.clienttype = mct.cltpid
@@ -128,6 +140,8 @@ project_tbl AS(
     left join "bpmsv2_dbo_master_country" mcon on ppd.countryid = mcon.countryid
     left join "bpmsv2_dbo_master_state" msts on ppd.regionid = msts.regionid
     left join "bpmsv2_dbo_master_cities" mcity on ppd.cityid = mcity.cityid
+    left join bpmsv2_dbo_tbl_master_forecast_continentcountrymapping ccon ON mcon.countryid = ccon.countryid
+    left join "bpmsv2"."bpmsv2_dbo_tbl_forecast_master_regiongroup" m2 ON ccon.masterregionid = m2.srno
     left join "bpmsv2_dbo_master_continent" mcont on ppd.continentid = mcont.continentid
     left join "bpmsv2_dbo_master_projectstage" mproj on ppd.stageid = mproj.stageid
     left join "bpmsv2_dbo_master_vertical" mvert on ppd.verticalid = mvert.verticalid
