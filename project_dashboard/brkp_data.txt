@@ -1,48 +1,46 @@
-WITH 
-project_breakup_data AS (
-    select 
-        pb.projectid
-        , pb.project_breakupid
-        --, count() OVER (PARTITION BY projectid) AS proj_brkp_counts
-        , CAST(pb.entrydate as date) entrydate
-        , hours AS brkp_hours
-        , ROUND((SUM(hours) OVER (PARTITION BY projectid)), 2) AS proj_hours
-        , contractvalue
-        , projectrate
-        , contractvaluelumpsum_currency AS contractvalue_currency
-        , contractvaluelumpsum As contractvalue_USD
-        , currency
-        , md.department
-        , eu.fullname as PDH_name
-        , array_join(array_agg(eu.fullname) OVER (PARTITION BY pb.projectid), ',') AS proj_PDHs
-        , ms.status
-        , array_join(array_agg(ms.status) OVER (PARTITION BY pb.projectid), ',') AS proj_status_grp
-        , pb.iseligibleforcf AS eligible_for_ClientFeedback
-        , pb.ispubaws as published_on_AWS
-        , pb.folderallocationrequest
-        , pw.projectweightage
-    from bpmsv2_dbo_project_breakup pb
-    left join bpmsv2_dbo_master_department md ON pb.deptid = md.deptid
-    left join bpmsv2_dbo_employee_userdetails eu ON pb.empid = eu.empid
-    left join bpmsv2_dbo_master_statustype ms ON pb.statusid = ms.statusid
-    left join bpmsv2_dbo_master_projectweightage pw ON pb.projectweightageid = pw.projectweightageid
-),
-prject_status_data AS (
-    select 
-        t.*
-        , CASE 
-            WHEN (contractvalue_USD is not null OR contractvalue_USD != 0) THEN contractvalue_USD
-            WHEN (projectrate is not null OR projectrate != 0) THEN (projectrate * brkp_hours)
-            WHEN (contractvalue is not null OR contractvalue != 0) THEN contractvalue
-            ELSE 0.00
-            END as cal_contractvalue
-        , CASE 
-            WHEN position('Running' IN t.proj_status_grp) > 0 THEN 'Running'
-            WHEN position('Transferred' IN t.proj_status_grp) > 0 THEN 'Transferred'
-            WHEN position('Finished' IN t.proj_status_grp) > 0 THEN 'Finished'
-            WHEN position('Hold' IN t.proj_status_grp) > 0 THEN 'Hold'
-            ELSE 'Cancelled' 
-        END AS proj_status 
-    from project_breakup_data t
+WITH
+planned_data_tbl AS (
+   select projectid, project_breakupid, min(tl_startdate) as planned_startdate, max(tl_enddate) as planned_enddate from bpmsv2_dbo_project_assigntl group by projectid, project_breakupid
 )
-select * from prject_status_data where projectid = 77319
+, project_breakup_data AS (
+   SELECT
+     pb.projectid
+   , pb.project_breakupid
+   , pdt.planned_startdate
+   , pdt.planned_enddate
+   , CAST(pb.entrydate AS date) entrydate
+   , hours brkp_hours
+   , ROUND(SUM(hours) OVER (PARTITION BY pb.projectid), 2) proj_hours
+   , contractvalue
+   , projectrate
+   , contractvaluelumpsum_currency contractvalue_currency
+   , contractvaluelumpsum contractvalue_USD
+   , currency
+   , md.department
+   , eu.fullname PDH_name
+   , array_join(array_agg(eu.fullname) OVER (PARTITION BY pb.projectid), ',') proj_PDHs
+   , ms.status
+   , array_join(array_agg(ms.status) OVER (PARTITION BY pb.projectid), ',') proj_status_grp
+   , pb.iseligibleforcf eligible_for_ClientFeedback
+   , pb.ispubaws published_on_AWS
+   , pb.folderallocationrequest
+   , pw.projectweightage
+   FROM
+   bpmsv2_dbo_project_breakup pb
+   left join planned_data_tbl pdt ON pb.projectid = pdt.projectid and pb.project_breakupid = pdt.project_breakupid
+   LEFT JOIN bpmsv2_dbo_master_department md ON pb.deptid = md.deptid
+   LEFT JOIN bpmsv2_dbo_employee_userdetails eu ON pb.empid = eu.empid
+   LEFT JOIN bpmsv2_dbo_master_statustype ms ON pb.statusid = ms.statusid
+   LEFT JOIN bpmsv2_dbo_master_projectweightage pw ON pb.projectweightageid = pw.projectweightageid
+) 
+, prject_status_data AS (
+   SELECT
+     t.*
+   , (CASE WHEN ((contractvalue_USD IS NOT NULL) OR (contractvalue_USD <> 0)) THEN contractvalue_USD WHEN ((projectrate IS NOT NULL) OR (projectrate <> 0)) THEN (projectrate * brkp_hours) WHEN ((contractvalue IS NOT NULL) OR (contractvalue <> 0)) THEN contractvalue ELSE 0E0 END) cal_contractvalue
+   , (CASE WHEN (strpos(t.proj_status_grp, 'Running') > 0) THEN 'Running' WHEN (strpos(t.proj_status_grp, 'Transferred') > 0) THEN 'Transferred' WHEN (strpos(t.proj_status_grp, 'Finished') > 0) THEN 'Finished' WHEN (strpos(t.proj_status_grp, 'Hold') > 0) THEN 'Hold' ELSE 'Cancelled' END) proj_status
+   FROM
+     project_breakup_data t
+) 
+SELECT *
+FROM
+  prject_status_data where projectid = 77793

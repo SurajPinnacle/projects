@@ -1,0 +1,21 @@
+WITH 
+feedback_tbl AS (
+    select clf.projectid, clf.project_breakupid, clf.cfstatus
+    , ed.fullname as Mentor, ed1.fullname as EnterBy
+    , CASE 
+        WHEN clfr.isrmfeedback = true THEN 'Yes'
+        WHEN clfr.isrmfeedback = false THEN 'No'
+        ELSE 'NA' 
+        END as RM_Feedback
+    , cast(clfr.entrydate as date) as feedback_rcv_date
+    , clfr.againjob, clfr.overall_satisfaction
+    , clfr.futureref
+    , clfr.communication, clfr.execution_process, clfr.team_competency, clfr.scope_of_work
+    , clfr.quality, clfr.comments, clfr.suggestion, clfr.mentry
+    , clfr.filledby, clfr.filledbyemail
+    from "bpmsv2_dbo_clientfeed_2018" clf 
+    left join "bpmsv2_dbo_clientfeed_responce" clfr ON clf.cfid= clfr.cfid
+    left join bpmsv2_dbo_employee_userdetails ed ON clfr.mentry = ed.empid
+    left join bpmsv2_dbo_employee_userdetails ed1 ON clf.entryby = ed1.empid
+)
+select * from feedback_tbl where projectid = 52346

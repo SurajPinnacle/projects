@@ -1,7 +1,22 @@
-select 
-    co.projectid, breakupid, contracthours, contractvalue, requestdate
-    , eu.fullname as requested_by, eu1.fullname as approved_by, approveddate, approvalstatus
-    , correctedhour, correctedvalue, files, ponumber, podate
-from bpmsv2_dbo_tbl_change_order co
-left join bpmsv2_dbo_employee_userdetails eu ON co.requestby = eu.empid
-left join bpmsv2_dbo_employee_userdetails eu1 ON co.approveby = eu1.empid
+SELECT
+  co.projectid
+, co.breakupid
+, eu2.fullname AS PDH_Name
+, co.contracthours
+, co.contractvalue
+, co.requestdate
+, eu.fullname requested_by
+, eu1.fullname approved_by
+, co.approveddate
+, co.approvalstatus
+, co.correctedhour
+, co.correctedvalue
+, co.files
+, co.ponumber
+, co.podate
+FROM
+bpmsv2_dbo_tbl_change_order co
+LEFT JOIN bpmsv2_dbo_project_breakup pb ON co.breakupid = pb.project_breakupid
+LEFT JOIN bpmsv2_dbo_employee_userdetails eu ON co.requestby = eu.empid
+LEFT JOIN bpmsv2_dbo_employee_userdetails eu1 ON co.approveby = eu1.empid
+LEFT JOIN bpmsv2_dbo_employee_userdetails eu2 ON pb.empid = eu2.empid
