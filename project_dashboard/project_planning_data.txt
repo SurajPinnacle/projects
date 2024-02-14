@@ -2,33 +2,100 @@ With
 log_hours_data AS (
     select project_assigntmid, sum(log_hour) AS log_hours from bpmsv2_dbo_project_tmactivity group by project_assigntmid
 ),
+-- daily flexy taget and log hour dat for tm --
+tm_log_tbl AS (
+    select pact.project_assigntmid, pact.entryby, eu.fullname as tm_name, cast(pact.entrydate as date) as entry_date, sum(pact.log_hour) as log_hour
+    from "bpmsv2_dbo_project_tmactivity" pact
+    left join bpmsv2_dbo_employee_userdetails eu ON pact.entryby = eu.empid 
+    where pact.availibility = true group by pact.project_assigntmid, pact.entryby, eu.fullname, pact.entrydate
+),
+daily_flexi_target AS (
+    select 
+    tmlog.*, flexi.dailytarget as daily_flexi_target_dollar 
+    , ROUND((flexi.dailytarget/ 8.75),2) as tm_hour_rate
+    , CASE 
+        WHEN log_hour < 8.75 THEN log_hour * ROUND((flexi.dailytarget/ 8.75), 2)
+        ELSE flexi.dailytarget END as proj_daily_flexi_target_dollar
+    from tm_log_tbl tmlog left join bpmsv2_dbo_tbl_teammembers_pdh_everyday flexi 
+    ON tmlog.entryby = flexi.empid and tmlog.entry_date = cast(flexi.entrydate as date)
+),
+-- end --
+assign_tl_grp AS (
+    select project_fragmentationdtlsid, sum(assigned_hour) as tl_hours from bpmsv2_dbo_project_assigntl where availability = TRUE
+    group by project_fragmentationdtlsid 
+),
+project_tm_grp AS (
+    select project_fragmentdtlsid, sum(hour) as tm_hours, min(cast(startdate as date)) as fragmnt_startdt 
+    from bpmsv2_dbo_project_tm where availibility = TRUE and impact = TRUE
+    group by project_fragmentdtlsid
+),
+-- areazone hours
+area_zone_hours AS (
+    select projectid, project_fragmentdtlsid, areazoneid, sum(hour) as assigned_area_zone_hours
+    , min(cast(startdate as date)) as areazone_startdt
+    from bpmsv2_dbo_project_tm where availibility = TRUE and impact = TRUE
+    group by projectid, project_fragmentdtlsid, areazoneid
+),
+-- Project Timeline data
+pm_timeline_data AS (
+    select distinct p.projectid , p.project_assigntmid , p.startdate, p.enddate
+        , date_add('day', n.day_offset, startdate) assign_date
+        , (hour / (date_diff('DAY', startdate, enddate) + 1)) perday_ass_hours
+    from (bpmsv2_dbo_project_tm p 
+    CROSS JOIN UNNEST(sequence(0, 365)) n (day_offset))
+    WHERE (date_add('day', n.day_offset, p.startdate) <= p.enddate)
+),
+pm_timeline_data_gp AS(
+    select projectid, project_assigntmid, cast(assign_date as date) as assign_date, sum(perday_ass_hours) as daily_pm_ass_hours
+    from pm_timeline_data 
+    group by projectid, project_assigntmid, assign_date
+),
 project_planning_data AS (
     select 
-        pb.projectid, pb.project_breakupid, md.department, ms.status, pf.project_fragmentationid, pfd.project_fragmentdtlsid, pt.areazoneid
-        , pt.project_assigntmid, pt.project_assigntlid
-        , pb.empid AS PDH_ID, eu.fullname AS PDH_Name, pb.hours AS brkp_hours
+        pb.projectid, pb.project_breakupid, md.department, pf.project_fragmentationid, pfd.project_fragmentdtlsid, azh.areazoneid, ptm.project_assigntmid
+        , pb.hours AS brkp_hours
+        , ROUND(((pb.hours) / count(*) OVER (partition by pb.project_breakupid)), 2) AS dis_brkp_planned_hours
+        , eu.fullname as PDH_Name
         , pf.type AS fragmentation_type, pf.bhour as fragment_hours
         , pfd.details AS fragmentationdtls_type, pfd.hour AS fragment_dtls_hours
-        , CAST(pfd.entrydate as date) AS fragment_dtls_entrydate
-        , pt.entryby AS PM_ID, eu1.fullname AS PM_Name, mw.emp_worktype as worktype, pz.floorid, pt.hour AS areazone_hours, CAST(pt.startdate as date) AS area_startdate
-        , cast(pt.enddate as date) AS area_enddate
-        , pz.areazone AS areazone_type, pz.areacovered, pz.entryby, pz.areaweightageid, cast(pz.entrydate as date) AS areazone_entrydate
-        -- logged hours details
-        , pta.log_hours AS tm_log_hours
-    from "bpmsv2_dbo_project_breakup" pb 
+        , ROUND(((pfd.hour) / count(*) OVER (partition by pfd.project_fragmentdtlsid)), 2) AS dis_fragment_dtls_hours
+        , eu1.fullname as PM_Name
+        , azone.areazone, mw.emp_worktype as worktype
+        , atg.tl_hours as pm_planned_hours, ptg.tm_hours as pm_assigned_hours
+        , cast(ptm.startdate as date) as pm_ass_startdate, cast(ptm.enddate as date) as pm_ass_enddate
+        , ptm.exercise
+        , ptg.fragmnt_startdt
+        , azh.assigned_area_zone_hours, azh.areazone_startdt
+        , ROUND(((atg.tl_hours) / count(*) OVER (partition by pfd.project_fragmentdtlsid)), 2) AS dis_pm_planned_hours
+        , ROUND(((ptg.tm_hours) / count(*) OVER (partition by pfd.project_fragmentdtlsid)), 2) AS dis_pm_assigned_hours
+        , ROUND(((azh.assigned_area_zone_hours) / count(*) OVER (partition by azh.areazoneid)), 2) AS dis_pm_assigned_hours_azone
+        , logdata.log_hours
+        , ROUND(((logdata.log_hours) / count(*) OVER (partition by ptm.project_assigntmid)), 2) AS dis_logged_hours
+        , ptm.hour as activity_ass_hours
+        , ptdg.assign_date, ptdg.daily_pm_ass_hours
+        , ROUND(((ptdg.daily_pm_ass_hours) / count(*) OVER (partition by dft.project_assigntmid, dft.entryby, dft.entry_date)), 2) AS dis_daily_pm_ass_hours
+        , dft.tm_name, dft.log_hour as tm_log_hours, dft.proj_daily_flexi_target_dollar
+    from bpmsv2_dbo_project_breakup pb 
     left join bpmsv2_dbo_project_fragmentation pf ON pb.project_breakupid = pf.projectbrekupid
     left join bpmsv2_dbo_project_fragmentationdtls pfd ON pf.project_fragmentationid = pfd.project_fragmentationid
-    left join bpmsv2_dbo_project_tm pt ON pb.project_breakupid = pt.projectbrkupid
-    left join view_master_worktype mw ON pt.worktypeid = mw.worktypeid
-    left join bpmsv2_dbo_project_areazone pz ON pt.areazoneid = pz.areazoneid
-    left join bpmsv2_dbo_master_department md ON pb.deptid = md.deptid
-    left join bpmsv2_dbo_master_statustype ms ON pb.statusid = ms.statusid
-    left join log_hours_data pta ON pt.project_assigntmid = pta.project_assigntmid
-    -- PDH Name
+    left join assign_tl_grp atg ON pfd.project_fragmentdtlsid = atg.project_fragmentationdtlsid
+    left join project_tm_grp ptg ON pfd.project_fragmentdtlsid = ptg.project_fragmentdtlsid
+    left join bpmsv2_dbo_project_tm ptm ON pfd.project_fragmentdtlsid = ptm.project_fragmentdtlsid
+    left join area_zone_hours azh ON pfd.project_fragmentdtlsid = azh.project_fragmentdtlsid and ptm.areazoneid = azh.areazoneid
+    left join bpmsv2_dbo_project_areazone azone ON azh.areazoneid = azone.areazoneid 
+    left join log_hours_data logdata ON ptm.project_assigntmid = logdata.project_assigntmid
+    left join pm_timeline_data_gp ptdg ON ptm.project_assigntmid = ptdg.project_assigntmid
+    left join daily_flexi_target dft ON ptm.project_assigntmid = dft.project_assigntmid and ptdg.assign_date = dft.entry_date
+    left join view_master_worktype mw ON ptm.worktypeid = mw.worktypeid
+    -- PDH name
     left join bpmsv2_dbo_employee_userdetails eu ON pb.empid = eu.empid
-    -- PM Name
-    left join bpmsv2_dbo_employee_userdetails eu1 ON pt.entryby = eu1.empid
-    -- where pb.projectid = 77793
+    -- Pm Name 
+    left join bpmsv2_dbo_employee_userdetails eu1 ON ptm.entryby = eu1.empid
+    -- Department
+    left join bpmsv2_dbo_master_department md ON pb.deptid = md.deptid
 )
-
-select * from project_planning_data where projectid = 77793
+select * from project_planning_data
+where 
+projectid = 77793 
+--project_fragmentdtlsid = 216165
+--project_assigntmid = 903549
