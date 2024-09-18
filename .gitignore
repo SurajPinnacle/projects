@@ -9,3 +9,7 @@ deeplearning/ienv
 timesave/venv
 glue_depedencies
 test/venv
+emailsentiment/venv
+emailsentiment/data
+emailsentiment/raw_data
+datapreprocessing/sparkenv
