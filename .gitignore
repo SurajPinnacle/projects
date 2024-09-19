@@ -13,3 +13,4 @@ emailsentiment/venv
 emailsentiment/data
 emailsentiment/raw_data
 datapreprocessing/sparkenv
+datapreprocessing/data
