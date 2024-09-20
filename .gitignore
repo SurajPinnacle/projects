@@ -14,3 +14,4 @@ emailsentiment/data
 emailsentiment/raw_data
 datapreprocessing/sparkenv
 datapreprocessing/data
+datapreprocessing/test_data
