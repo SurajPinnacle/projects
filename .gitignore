@@ -19,3 +19,5 @@ datapreprocessing/data
 datapreprocessing/test_data
 sagemaker_pakage
 anamolies\data
+openCv\imageevn
+openCv\data
