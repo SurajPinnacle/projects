@@ -155,8 +155,8 @@ if __name__ == "__main__":
 
     # Define scales, threshold, and icon name
     scales = np.arange(0.6, 1.2, 0.1)
-    threshold = 0.8  # Adjust based on experimentation
-    icon_name = 'wall_mounted_duplex_receptacle'
+    threshold = 0.6  # Adjust based on experimentation
+    icon_name = f'wall_mounted_duplex_receptacle_threshold_{threshold}'
 
     print('Running OpenCV detection...')
 
