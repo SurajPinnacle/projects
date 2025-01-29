@@ -250,15 +250,15 @@ if __name__ == "__main__":
 
     print('Running OpenCV detection...')
 
-    detected_icons = detect_icons_in_subfolders(image_path, template_folder, output_folder, scales, threshold)
-    print(detected_icons)
-    print(len(detected_icons))
+    # detected_icons = detect_icons_in_subfolders(image_path, template_folder, output_folder, scales, threshold)
+    # print(detected_icons)
+    # print(len(detected_icons))
 
-    # # Capture detected coordinates (bounding boxes)
-    # detected_coordinates = capture_detected_coordinates(image_path, template_folder, scales, threshold)
+    # Capture detected coordinates (bounding boxes)
+    detected_coordinates = capture_detected_coordinates(image_path, template_folder, scales, threshold)
 
-    # # Mark the detected objects on the image
-    # marked_image, object_count = mark_the_objects(image_path, detected_coordinates)
+    # Mark the detected objects on the image
+    marked_image, object_count = mark_the_objects(image_path, detected_coordinates)
 
-    # # Save the marked image 
-    # save_the_image(marked_image, object_count, output_folder, icon_name)
+    # Save the marked image 
+    save_the_image(marked_image, object_count, output_folder, icon_name)
